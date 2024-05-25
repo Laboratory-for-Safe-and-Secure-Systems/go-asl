@@ -16,8 +16,10 @@ const (
 	CONN_TYPE = "tcp"
 )
 
+const clientAuth = true
+
 func main() {
-  fmt.Printf("%s\n", wolfSSL.WolfSSL_lib_version())
+	fmt.Printf("%s\n", wolfSSL.WolfSSL_lib_version())
 	/* Server Key and Certificate paths */
 	CERT_FILE := "./certs/server_cert.pem"
 	KEY_FILE := "./certs/server_key.pem"
@@ -25,8 +27,7 @@ func main() {
 	/* Initialize wolfSSL */
 	method := wolfSSL.Method{Name: "TLSv1.3"}
 
-  ctx := wolfSSL.InitWolfSSL(CERT_FILE, KEY_FILE, true, method)
-
+	ctx := wolfSSL.InitWolfSSL(CERT_FILE, CAFILE, KEY_FILE, false, clientAuth, method)
 
 	/* Listen for incoming connections */
 	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
@@ -74,6 +75,7 @@ func handleRequest(conn net.Conn, ctx *wolfSSL.WOLFSSL_CTX) {
 		fmt.Println("WolfSSL_new Failed")
 		os.Exit(1)
 	}
+
 	var ret int
 	/* Retrieve file descriptor from net.Conn type */
 	file, err := conn.(*net.TCPConn).File()
@@ -100,6 +102,16 @@ func handleRequest(conn net.Conn, ctx *wolfSSL.WOLFSSL_CTX) {
 	}
 
 	buf := make([]byte, 1000000)
+
+	if clientAuth {
+		peerCert, err := wolfSSL.WolfSSL_get_peer_certificate(ssl)
+		if err != nil {
+			fmt.Println("Error: WolfSSL_get_peer_certificate Failed")
+			os.Exit(1)
+		}
+
+		fmt.Println("Peer Certificate:", peerCert.Subject.CommonName)
+	}
 
 	/* Receive then print the message from client */
 	ret = wolfSSL.WolfSSL_read(ssl, buf, 100000)

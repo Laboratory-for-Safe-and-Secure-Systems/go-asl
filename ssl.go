@@ -27,6 +27,7 @@ package wolfSSL
 // #endif
 import "C"
 import (
+	"crypto/x509"
 	"fmt"
 	"log"
 	"unsafe"
@@ -202,7 +203,27 @@ func WolfSSL_lib_version() string {
 	return C.GoString(C.wolfSSL_lib_version())
 }
 
-func InitWolfSSL(certFile, keyFile string, debug bool, method Method) *WOLFSSL_CTX {
+func WolfSSL_get_peer_certificate(ssl *WOLFSSL) (*x509.Certificate, error) {
+	peerCert := (C.wolfSSL_get_peer_certificate((*C.struct_WOLFSSL)(ssl)))
+	sz := C.int(0)
+	if peerCert == nil {
+		return nil, fmt.Errorf("Peer certificate is nil")
+	}
+
+	data := C.wolfSSL_X509_get_der(peerCert, &sz)
+	if data == nil {
+		return nil, fmt.Errorf("Failed to get peer certificate")
+	}
+
+	certX509, err := x509.ParseCertificate(C.GoBytes(unsafe.Pointer(data), sz))
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse peer certificate")
+	}
+
+	return certX509, nil
+}
+
+func InitWolfSSL(certFile, caFile, keyFile string, debug, clientAuth bool, method Method) *WOLFSSL_CTX {
 	WolfSSL_Init()
 	if debug {
 		WolfSSL_Debugging_ON()
@@ -231,6 +252,14 @@ func InitWolfSSL(certFile, keyFile string, debug bool, method Method) *WOLFSSL_C
 	}
 	if WolfSSL_CTX_use_PrivateKey_file(ctx, keyFile, SSL_FILETYPE_PEM) != 1 {
 		log.Fatal("Failed to load server private key")
+	}
+
+	if clientAuth {
+		C.wolfSSL_CTX_set_verify(ctx, C.SSL_VERIFY_PEER, (*[0]byte)(nil))
+
+		if WolfSSL_CTX_load_verify_locations(ctx, caFile, nil) != 1 {
+			log.Fatal("Failed to load verify locations")
+		}
 	}
 
 	WolfSSL_set_callbaks((*WOLFSSL_CTX)(ctx))
