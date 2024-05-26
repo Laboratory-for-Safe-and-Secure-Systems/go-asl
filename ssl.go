@@ -25,6 +25,14 @@ package wolfSSL
 //      return NULL;
 // }
 // #endif
+// #ifndef WOLFSSL_NO_TLS12
+// WOLFSSL_METHOD*  wolfTLSv1_2_server_method(void) {
+//      return NULL;
+// }
+// WOLFSSL_METHOD*  wolfTLSv1_2_client_method(void) {
+//      return NULL;
+// }
+// #endif
 import "C"
 import (
 	"crypto/x509"
@@ -102,11 +110,19 @@ func WolfSSL_free(ssl *WOLFSSL) {
 }
 
 func WolfTLSv1_2_server_method() *C.struct_WOLFSSL_METHOD {
-	return C.wolfTLSv1_2_server_method()
+	ret := C.wolfTLSv1_2_server_method()
+	if ret == nil {
+		log.Fatal("TLSv1.2 is not supported")
+	}
+	return ret
 }
 
 func WolfTLSv1_2_client_method() *C.struct_WOLFSSL_METHOD {
-	return C.wolfTLSv1_2_client_method()
+  ret := C.wolfTLSv1_2_client_method()
+  if ret == nil {
+    log.Fatal("TLSv1.2 is not supported")
+  }
+  return ret
 }
 
 func WolfTLSv1_3_server_method() *C.struct_WOLFSSL_METHOD {
