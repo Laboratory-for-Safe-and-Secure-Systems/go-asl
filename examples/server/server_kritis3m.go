@@ -1,13 +1,12 @@
 package main
 
 import (
-	"encoding/pem"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
 
-	wolfSSL "github.com/ayham291/go-wolfssl"
+	"github.com/ayham291/go-wolfssl/asl"
 )
 
 /* Connection configuration constants */
@@ -20,20 +19,19 @@ const (
 const clientAuth = true
 
 func main() {
-	fmt.Printf("%s\n", wolfSSL.WolfSSL_lib_version())
 	/* Server Key and Certificate paths */
 	CERT_FILE := "./certs/server_cert.pem"
 	KEY_FILE := "./certs/server_key.pem"
 	CAFILE := "./certs/takemepls.pem"
 
 	// Create and configure the library configuration
-	libConfig := &wolfSSL.ASLConfig{
+	libConfig := &asl.ASLConfig{
 		LoggingEnabled:       true,
 		LogLevel:             3,
 		SecureElementSupport: false,
 	}
 
-	err := wolfSSL.ASLinit(libConfig)
+	err := asl.ASLinit(libConfig)
 	if err != nil {
 		fmt.Println("Error initializing wolfSSL:", err)
 		os.Exit(1)
@@ -46,27 +44,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Decode the PEM block
-	block, rest := pem.Decode(certPEM)
-	if block == nil {
-		fmt.Println("Failed to decode PEM block containing the certificate")
-		os.Exit(1)
-	}
-
-	// Check if there are remaining blocks
-	if len(rest) > 0 {
-		fmt.Println("Warning: additional data found after the first PEM block")
-	}
-
 	key, err := os.ReadFile(KEY_FILE)
 	if err != nil {
 		fmt.Println("Error reading key file:", err)
-		os.Exit(1)
-	}
-
-	keyBlock, _ := pem.Decode(key)
-	if keyBlock == nil {
-		fmt.Println("Failed to decode PEM block containing the private key")
 		os.Exit(1)
 	}
 
@@ -76,30 +56,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	caBlock, _ := pem.Decode(caPEM)
-	if caBlock == nil {
-		fmt.Println("Failed to decode PEM block containing the CA certificate")
-		os.Exit(1)
-	}
-
 	// Create and configure the endpoint configuration
-	endpointConfig := &wolfSSL.EndpointConfig{
+	endpointConfig := &asl.EndpointConfig{
 		MutualAuthentication:    true,
 		NoEncryption:            false,
 		UseSecureElement:        false,
 		SecureElementImportKeys: false,
-		HybridSignatureMode:     wolfSSL.HYBRID_SIGNATURE_MODE_NATIVE,
-		DeviceCertificateChain:  wolfSSL.Buffer{Buffer: certPEM},
-		PrivateKey: wolfSSL.PrivateKey{
-			Buffer:              key,
-			AdditionalKeyBuffer: key,
+		HybridSignatureMode:     asl.HYBRID_SIGNATURE_MODE_BOTH,
+		DeviceCertificateChain:  asl.Buffer{Buffer: certPEM},
+		PrivateKey: asl.PrivateKey{
+			Buffer: key,
+			// only if the keys are in separate files
+			AdditionalKeyBuffer: nil,
 		},
-		RootCertificate: wolfSSL.Buffer{Buffer: caPEM},
+		RootCertificate: asl.Buffer{Buffer: caPEM},
 		KeylogFile:      "/tmp/keylog.txt",
 	}
 
 	// Use the cEndpointConfig in C functions...
-	serverEndpoint := wolfSSL.ASLsetupServerEndpoint(endpointConfig)
+	serverEndpoint := asl.ASLsetupServerEndpoint(endpointConfig)
+	if serverEndpoint == nil {
+		fmt.Println("Error setting up server endpoint")
+		os.Exit(1)
+	}
+
+	ctx_ := asl.GetWolfSSLContext(serverEndpoint)
+	if ctx_ == nil {
+		fmt.Println("Error getting wolfSSL context")
+		os.Exit(1)
+	}
 
 	fmt.Println("Configuration setup complete")
 
@@ -133,11 +118,11 @@ func main() {
 	got := <-sig
 	fmt.Println("Received signal:", got)
 
-	wolfSSL.ASLFreeEndpoint(serverEndpoint)
+	asl.ASLFreeEndpoint(serverEndpoint)
 }
 
 /* Handles incoming requests */
-func handleRequest(conn net.Conn, serverEndpoint *wolfSSL.ASLEndpoint) {
+func handleRequest(conn net.Conn, serverEndpoint *asl.ASLEndpoint) {
 	/* Close the connection when you're done with it */
 	defer conn.Close()
 
@@ -150,21 +135,50 @@ func handleRequest(conn net.Conn, serverEndpoint *wolfSSL.ASLEndpoint) {
 	defer file.Close()
 
 	fd := int(file.Fd())
-	ASLSession := wolfSSL.ASLCreateSession(serverEndpoint, fd)
+	ASLSession := asl.ASLCreateSession(serverEndpoint, fd)
 	if ASLSession == nil {
 		fmt.Println("Error creating session")
 		return
 	}
 
-	err = wolfSSL.ASLHandshake(ASLSession)
+	session_ := asl.GetWolfSSLSession(ASLSession)
+	if session_ == nil {
+		fmt.Println("Error getting wolfSSL session")
+		return
+	}
+
+	err = asl.ASLHandshake(ASLSession)
 	if err != nil {
 		fmt.Println("Error handshaking:", err)
 		return
 	}
 
+	// Get the peer certificate
+	peerCert, err := asl.WolfSSL_get_peer_certificate(session_)
+	if err != nil {
+		fmt.Println("Error getting peer certificate:", err)
+		return
+	}
+
+	// peerCert.UnhandledCriticalExtensions
+	for _, ext := range peerCert.UnhandledCriticalExtensions {
+		fmt.Println(ext)
+	}
+
+	// #define SubjectAltPublicKeyInfoExtension "2.5.29.72"
+	// #define AltSignatureAlgorithmExtension "2.5.29.73"
+	// #define AltSignatureValueExtension "2.5.29.74"
+
+	// print all the non-critical extensions
+	for _, ext := range peerCert.Extensions {
+		if !ext.Critical {
+			fmt.Println(ext.Id)
+		}
+	}
+
 	// read
 	buffer := make([]byte, 1024)
-	n, err := wolfSSL.ASLReceive(ASLSession, buffer)
+	n, err := asl.ASLReceive(ASLSession, buffer)
 	if err != nil {
 		fmt.Println("Error receiving data:", err)
 		return
@@ -174,12 +188,12 @@ func handleRequest(conn net.Conn, serverEndpoint *wolfSSL.ASLEndpoint) {
 
 	/* Send a response back to the client */
 	bufSend := []byte("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHello")
-	err = wolfSSL.ASLSend(ASLSession, bufSend)
+	err = asl.ASLSend(ASLSession, bufSend)
 	if err != nil {
 		fmt.Println("Error sending data:", err)
 		return
 	}
 
-	wolfSSL.ASLCloseSession(ASLSession)
-	wolfSSL.ASLFreeSession(ASLSession)
+	asl.ASLCloseSession(ASLSession)
+	asl.ASLFreeSession(ASLSession)
 }

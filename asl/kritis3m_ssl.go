@@ -1,24 +1,47 @@
-package wolfSSL
+package asl
 
 // #cgo pkg-config: --static kritis3m
-// #include <kritis3m_asl/asl.h>
+// #include <asl_config.h>
+// #include <asl.h>
 // #include <stdlib.h>
 import "C"
 import (
+	"crypto/x509"
 	"fmt"
 	"unsafe"
 )
 
+type WOLFSSL_CTX C.struct_WOLFSSL_CTX
+type WOLFSSL C.struct_WOLFSSL
 type ASLEndpoint C.asl_endpoint
 type ASLSession C.asl_session
 
+// PQ OIDs
+const (
+	SubjectAltPublicKeyInfoExtension = "2.5.29.72"
+	AltSignatureAlgorithmExtension   = "2.5.29.73"
+	AltSignatureValueExtension       = "2.5.29.74"
+)
+
 // Error codes
 const (
-	ASL_SUCCESS        = C.ASL_SUCCESS
-	ASL_MEMORY_ERROR   = C.ASL_MEMORY_ERROR
-	ASL_ARGUMENT_ERROR = C.ASL_ARGUMENT_ERROR
-	ASL_WANT_READ      = C.ASL_WANT_READ
-	ASL_WANT_WRITE     = C.ASL_WANT_WRITE
+	ASL_SUCCESS           = C.ASL_SUCCESS
+	ASL_MEMORY_ERROR      = C.ASL_MEMORY_ERROR
+	ASL_ARGUMENT_ERROR    = C.ASL_ARGUMENT_ERROR
+	ASL_INTERNAL_ERROR    = C.ASL_INTERNAL_ERROR
+	ASL_CERTIFICATE_ERROR = C.ASL_CERTIFICATE_ERROR
+	ASL_PKCS11_ERROR      = C.ASL_PKCS11_ERROR
+	ASL_CONN_CLOSED       = C.ASL_CONN_CLOSED
+	ASL_WANT_READ         = C.ASL_WANT_READ
+	ASL_WANT_WRITE        = C.ASL_WANT_WRITE
+)
+
+// Logging levels
+const (
+	ASL_LOG_LEVEL_ERR = C.ASL_LOG_LEVEL_ERR
+	ASL_LOG_LEVEL_WRN = C.ASL_LOG_LEVEL_WRN
+	ASL_LOG_LEVEL_INF = C.ASL_LOG_LEVEL_INF
+	ASL_LOG_LEVEL_DBG = C.ASL_LOG_LEVEL_DBG
 )
 
 // Hybrid signature modes
@@ -35,9 +58,12 @@ type Buffer struct {
 }
 
 type PrivateKey struct {
-	Buffer              []byte
+	Buffer []byte
+	// only if the keys are in separate files
 	AdditionalKeyBuffer []byte
 }
+
+type CustomLogCallback C.asl_custom_log_callback
 
 type EndpointConfig struct {
 	MutualAuthentication    bool
@@ -68,8 +94,13 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	// Allocate and set the private key
 	config.private_key.buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.Buffer))
 	config.private_key.size = C.size_t(len(ec.PrivateKey.Buffer))
-	config.private_key.additional_key_buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.AdditionalKeyBuffer))
-	config.private_key.additional_key_size = C.size_t(len(ec.PrivateKey.AdditionalKeyBuffer))
+	if ec.PrivateKey.AdditionalKeyBuffer == nil {
+		// NULL
+		ec.PrivateKey.AdditionalKeyBuffer = []byte{}
+	} else {
+		config.private_key.additional_key_buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.AdditionalKeyBuffer))
+		config.private_key.additional_key_size = C.size_t(len(ec.PrivateKey.AdditionalKeyBuffer))
+	}
 
 	// Allocate and set the root certificate
 	config.root_certificate.buffer = (*C.uint8_t)(C.CBytes(ec.RootCertificate.Buffer))
@@ -89,14 +120,16 @@ func (ec *EndpointConfig) Free() {
 type ASLConfig struct {
 	LoggingEnabled              bool
 	LogLevel                    int32
+	CustomLogCallback           CustomLogCallback
 	SecureElementSupport        bool
 	SecureElementMiddlewarePath string
 }
 
 func (lc *ASLConfig) toC() *C.asl_configuration {
 	config := C.asl_configuration{
-		loggingEnabled:                 C.bool(lc.LoggingEnabled),
-		logLevel:                       C.int32_t(lc.LogLevel),
+		logging_enabled:                C.bool(lc.LoggingEnabled),
+		log_level:                      C.int32_t(lc.LogLevel),
+		custom_log_callback:            (C.asl_custom_log_callback)(lc.CustomLogCallback),
 		secure_element_support:         C.bool(lc.SecureElementSupport),
 		secure_element_middleware_path: C.CString(lc.SecureElementMiddlewarePath),
 	}
@@ -117,8 +150,8 @@ type HandshakeMetrics struct {
 func (hm *HandshakeMetrics) toC() *C.asl_handshake_metrics {
 	return &C.asl_handshake_metrics{
 		duration_us: C.uint32_t(hm.DurationMicroS),
-		txBytes:     C.uint32_t(hm.TxBytes),
-		rxBytes:     C.uint32_t(hm.RxBytes),
+		tx_bytes:    C.uint32_t(hm.TxBytes),
+		rx_bytes:    C.uint32_t(hm.RxBytes),
 	}
 }
 
@@ -160,8 +193,8 @@ func ASLReceive(session *ASLSession, buffer []byte) (int, error) {
 		// This is not an error, just a signal that we need to read more data
 		return 0, nil
 	} else if ret < 0 {
-    return 0, fmt.Errorf("Failed to receive: %s", ASLErrorMessage(ret))
-  }
+		return 0, fmt.Errorf("Failed to receive: %s", ASLErrorMessage(ret))
+	}
 	return ret, nil
 }
 
@@ -179,8 +212,8 @@ func ASLSend(session *ASLSession, buffer []byte) error {
 func HandshakeMetricsFromC(cMetrics *C.asl_handshake_metrics) *HandshakeMetrics {
 	return &HandshakeMetrics{
 		DurationMicroS: uint32(cMetrics.duration_us),
-		TxBytes:        uint32(cMetrics.txBytes),
-		RxBytes:        uint32(cMetrics.rxBytes),
+		TxBytes:        uint32(cMetrics.tx_bytes),
+		RxBytes:        uint32(cMetrics.rx_bytes),
 	}
 }
 
@@ -199,4 +232,32 @@ func ASLFreeSession(session *ASLSession) {
 
 func ASLFreeEndpoint(endpoint *ASLEndpoint) {
 	C.asl_free_endpoint((*C.asl_endpoint)(endpoint))
+}
+
+func GetWolfSSLSession(session *ASLSession) *WOLFSSL {
+	return (*WOLFSSL)(unsafe.Pointer(C.asl_get_wolfssl_session((*C.asl_session)(session))))
+}
+
+func GetWolfSSLContext(context *ASLEndpoint) *WOLFSSL_CTX {
+	return (*WOLFSSL_CTX)(unsafe.Pointer(C.asl_get_wolfssl_context((*C.asl_endpoint)(context))))
+}
+
+func WolfSSL_get_peer_certificate(ssl *WOLFSSL) (*x509.Certificate, error) {
+	peerCert := (C.wolfSSL_get_peer_certificate((*C.struct_WOLFSSL)(ssl)))
+	sz := C.int(0)
+	if peerCert == nil {
+		return nil, fmt.Errorf("Peer certificate is nil")
+	}
+
+	data := C.wolfSSL_X509_get_der(peerCert, &sz)
+	if data == nil {
+		return nil, fmt.Errorf("Failed to get peer certificate")
+	}
+
+	certX509, err := x509.ParseCertificate(C.GoBytes(unsafe.Pointer(data), sz))
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse peer certificate")
+	}
+
+	return certX509, nil
 }
