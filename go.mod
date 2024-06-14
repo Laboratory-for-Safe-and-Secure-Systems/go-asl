@@ -1,3 +1,3 @@
-module github.com/ayham291/go-wolfssl
+module github.com/Laboratory-for-Safe-and-Secure-Systems/go-wolfssl
 
 go 1.13
