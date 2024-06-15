@@ -8,6 +8,7 @@ import "C"
 import (
 	"crypto/x509"
 	"fmt"
+	"os"
 	"unsafe"
 )
 
@@ -53,12 +54,19 @@ const (
 	HYBRID_SIGNATURE_MODE_BOTH        HybridSignatureMode = C.HYBRID_SIGNATURE_MODE_BOTH
 )
 
-type Buffer struct {
-	Buffer []byte
+type DeviceCertificateChain struct {
+  Path string
+  buffer []byte
+}
+
+type RootCertificate struct {
+  Path string
+  buffer []byte
 }
 
 type PrivateKey struct {
-	Buffer []byte
+  Path string
+  buffer []byte
 	// only if the keys are in separate files
 	AdditionalKeyBuffer []byte
 }
@@ -71,9 +79,9 @@ type EndpointConfig struct {
 	UseSecureElement        bool
 	SecureElementImportKeys bool
 	HybridSignatureMode     HybridSignatureMode
-	DeviceCertificateChain  Buffer
+	DeviceCertificateChain  DeviceCertificateChain
 	PrivateKey              PrivateKey
-	RootCertificate         Buffer
+	RootCertificate         RootCertificate
 	KeylogFile              string
 }
 
@@ -87,13 +95,40 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 		keylog_file:                C.CString(ec.KeylogFile),
 	}
 
+  // read the device certificate chain from file
+  if ec.DeviceCertificateChain.Path != "" {
+    deviceCertChain, err := os.ReadFile(ec.DeviceCertificateChain.Path)
+    if err != nil {
+      panic(err)
+    }
+    ec.DeviceCertificateChain.buffer = deviceCertChain
+  }
+
+  // read the private key from file
+  if ec.PrivateKey.Path != "" {
+    privateKey, err := os.ReadFile(ec.PrivateKey.Path)
+    if err != nil {
+      panic(err)
+    }
+    ec.PrivateKey.buffer = privateKey
+  }
+
+  // read the root certificate from file
+  if ec.RootCertificate.Path != "" {
+    rootCert, err := os.ReadFile(ec.RootCertificate.Path)
+    if err != nil {
+      panic(err)
+    }
+    ec.RootCertificate.buffer = rootCert
+  }
+
 	// Allocate and set the device certificate chain
-	config.device_certificate_chain.buffer = (*C.uint8_t)(C.CBytes(ec.DeviceCertificateChain.Buffer))
-	config.device_certificate_chain.size = C.size_t(len(ec.DeviceCertificateChain.Buffer))
+	config.device_certificate_chain.buffer = (*C.uint8_t)(C.CBytes(ec.DeviceCertificateChain.buffer))
+	config.device_certificate_chain.size = C.size_t(len(ec.DeviceCertificateChain.buffer))
 
 	// Allocate and set the private key
-	config.private_key.buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.Buffer))
-	config.private_key.size = C.size_t(len(ec.PrivateKey.Buffer))
+	config.private_key.buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.buffer))
+	config.private_key.size = C.size_t(len(ec.PrivateKey.buffer))
 	if ec.PrivateKey.AdditionalKeyBuffer == nil {
 		// NULL
 		ec.PrivateKey.AdditionalKeyBuffer = []byte{}
@@ -103,8 +138,8 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	}
 
 	// Allocate and set the root certificate
-	config.root_certificate.buffer = (*C.uint8_t)(C.CBytes(ec.RootCertificate.Buffer))
-	config.root_certificate.size = C.size_t(len(ec.RootCertificate.Buffer))
+	config.root_certificate.buffer = (*C.uint8_t)(C.CBytes(ec.RootCertificate.buffer))
+	config.root_certificate.size = C.size_t(len(ec.RootCertificate.buffer))
 
 	return &config
 }

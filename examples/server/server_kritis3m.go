@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/ayham291/go-wolfssl/asl"
+	"github.com/Laboratory-for-Safe-and-Secure-Systems/go-wolfssl/asl"
 )
 
 /* Connection configuration constants */
@@ -37,25 +37,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Read the certificate file
-	certPEM, err := os.ReadFile(CERT_FILE)
-	if err != nil {
-		fmt.Println("Error reading certificate file:", err)
-		os.Exit(1)
-	}
-
-	key, err := os.ReadFile(KEY_FILE)
-	if err != nil {
-		fmt.Println("Error reading key file:", err)
-		os.Exit(1)
-	}
-
-	caPEM, err := os.ReadFile(CAFILE)
-	if err != nil {
-		fmt.Println("Error reading CA file:", err)
-		os.Exit(1)
-	}
-
 	// Create and configure the endpoint configuration
 	endpointConfig := &asl.EndpointConfig{
 		MutualAuthentication:    true,
@@ -63,13 +44,13 @@ func main() {
 		UseSecureElement:        false,
 		SecureElementImportKeys: false,
 		HybridSignatureMode:     asl.HYBRID_SIGNATURE_MODE_BOTH,
-		DeviceCertificateChain:  asl.Buffer{Buffer: certPEM},
+		DeviceCertificateChain:  asl.DeviceCertificateChain{Path: CERT_FILE},
 		PrivateKey: asl.PrivateKey{
-			Buffer: key,
+      Path: KEY_FILE,
 			// only if the keys are in separate files
 			AdditionalKeyBuffer: nil,
 		},
-		RootCertificate: asl.Buffer{Buffer: caPEM},
+		RootCertificate: asl.RootCertificate{Path: CAFILE},
 		KeylogFile:      "/tmp/keylog.txt",
 	}
 
