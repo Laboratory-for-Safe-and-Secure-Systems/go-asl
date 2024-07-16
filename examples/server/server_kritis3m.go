@@ -28,7 +28,6 @@ func main() {
 	libConfig := &asl.ASLConfig{
 		LoggingEnabled:       true,
 		LogLevel:             3,
-		SecureElementSupport: false,
 	}
 
 	err := asl.ASLinit(libConfig)

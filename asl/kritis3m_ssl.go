@@ -55,18 +55,18 @@ const (
 )
 
 type DeviceCertificateChain struct {
-  Path string
-  buffer []byte
+	Path   string
+	buffer []byte
 }
 
 type RootCertificate struct {
-  Path string
-  buffer []byte
+	Path   string
+	buffer []byte
 }
 
 type PrivateKey struct {
-  Path string
-  buffer []byte
+	Path   string
+	buffer []byte
 	// only if the keys are in separate files
 	AdditionalKeyBuffer []byte
 }
@@ -74,53 +74,55 @@ type PrivateKey struct {
 type CustomLogCallback C.asl_custom_log_callback
 
 type EndpointConfig struct {
-	MutualAuthentication    bool
-	NoEncryption            bool
-	UseSecureElement        bool
-	SecureElementImportKeys bool
-	HybridSignatureMode     HybridSignatureMode
-	DeviceCertificateChain  DeviceCertificateChain
-	PrivateKey              PrivateKey
-	RootCertificate         RootCertificate
-	KeylogFile              string
+	MutualAuthentication        bool
+	NoEncryption                bool
+	UseSecureElement            bool
+	SecureElementImportKeys     bool
+	SecureElementMiddlewarePath string
+	HybridSignatureMode         HybridSignatureMode
+	DeviceCertificateChain      DeviceCertificateChain
+	PrivateKey                  PrivateKey
+	RootCertificate             RootCertificate
+	KeylogFile                  string
 }
 
 func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	config := C.asl_endpoint_configuration{
-		mutual_authentication:      C.bool(ec.MutualAuthentication),
-		no_encryption:              C.bool(ec.NoEncryption),
-		use_secure_element:         C.bool(ec.UseSecureElement),
-		secure_element_import_keys: C.bool(ec.SecureElementImportKeys),
-		hybrid_signature_mode:      C.enum_asl_hybrid_signature_mode(ec.HybridSignatureMode),
-		keylog_file:                C.CString(ec.KeylogFile),
+		mutual_authentication:          C.bool(ec.MutualAuthentication),
+		no_encryption:                  C.bool(ec.NoEncryption),
+		use_secure_element:             C.bool(ec.UseSecureElement),
+		secure_element_import_keys:     C.bool(ec.SecureElementImportKeys),
+		secure_element_middleware_path: C.CString(ec.SecureElementMiddlewarePath),
+		hybrid_signature_mode:          C.enum_asl_hybrid_signature_mode(ec.HybridSignatureMode),
+		keylog_file:                    C.CString(ec.KeylogFile),
 	}
 
-  // read the device certificate chain from file
-  if ec.DeviceCertificateChain.Path != "" {
-    deviceCertChain, err := os.ReadFile(ec.DeviceCertificateChain.Path)
-    if err != nil {
-      panic(err)
-    }
-    ec.DeviceCertificateChain.buffer = deviceCertChain
-  }
+	// read the device certificate chain from file
+	if ec.DeviceCertificateChain.Path != "" {
+		deviceCertChain, err := os.ReadFile(ec.DeviceCertificateChain.Path)
+		if err != nil {
+			panic(err)
+		}
+		ec.DeviceCertificateChain.buffer = deviceCertChain
+	}
 
-  // read the private key from file
-  if ec.PrivateKey.Path != "" {
-    privateKey, err := os.ReadFile(ec.PrivateKey.Path)
-    if err != nil {
-      panic(err)
-    }
-    ec.PrivateKey.buffer = privateKey
-  }
+	// read the private key from file
+	if ec.PrivateKey.Path != "" {
+		privateKey, err := os.ReadFile(ec.PrivateKey.Path)
+		if err != nil {
+			panic(err)
+		}
+		ec.PrivateKey.buffer = privateKey
+	}
 
-  // read the root certificate from file
-  if ec.RootCertificate.Path != "" {
-    rootCert, err := os.ReadFile(ec.RootCertificate.Path)
-    if err != nil {
-      panic(err)
-    }
-    ec.RootCertificate.buffer = rootCert
-  }
+	// read the root certificate from file
+	if ec.RootCertificate.Path != "" {
+		rootCert, err := os.ReadFile(ec.RootCertificate.Path)
+		if err != nil {
+			panic(err)
+		}
+		ec.RootCertificate.buffer = rootCert
+	}
 
 	// Allocate and set the device certificate chain
 	config.device_certificate_chain.buffer = (*C.uint8_t)(C.CBytes(ec.DeviceCertificateChain.buffer))
@@ -153,27 +155,19 @@ func (ec *EndpointConfig) Free() {
 }
 
 type ASLConfig struct {
-	LoggingEnabled              bool
-	LogLevel                    int32
-	CustomLogCallback           CustomLogCallback
-	SecureElementSupport        bool
-	SecureElementMiddlewarePath string
+	LoggingEnabled    bool
+	LogLevel          int32
+	CustomLogCallback CustomLogCallback
 }
 
 func (lc *ASLConfig) toC() *C.asl_configuration {
 	config := C.asl_configuration{
-		logging_enabled:                C.bool(lc.LoggingEnabled),
-		log_level:                      C.int32_t(lc.LogLevel),
-		custom_log_callback:            (C.asl_custom_log_callback)(lc.CustomLogCallback),
-		secure_element_support:         C.bool(lc.SecureElementSupport),
-		secure_element_middleware_path: C.CString(lc.SecureElementMiddlewarePath),
+		logging_enabled:     C.bool(lc.LoggingEnabled),
+		log_level:           C.int32_t(lc.LogLevel),
+		custom_log_callback: (C.asl_custom_log_callback)(lc.CustomLogCallback),
 	}
 
 	return &config
-}
-
-func (lc *ASLConfig) Free() {
-	C.free(unsafe.Pointer(lc.toC().secure_element_middleware_path))
 }
 
 type HandshakeMetrics struct {
