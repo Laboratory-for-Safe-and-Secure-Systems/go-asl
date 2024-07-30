@@ -49,9 +49,25 @@ const (
 type HybridSignatureMode int
 
 const (
-	HYBRID_SIGNATURE_MODE_NATIVE      HybridSignatureMode = C.HYBRID_SIGNATURE_MODE_NATIVE
-	HYBRID_SIGNATURE_MODE_ALTERNATIVE HybridSignatureMode = C.HYBRID_SIGNATURE_MODE_ALTERNATIVE
-	HYBRID_SIGNATURE_MODE_BOTH        HybridSignatureMode = C.HYBRID_SIGNATURE_MODE_BOTH
+	HYBRID_SIGNATURE_MODE_DEFAULT     HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_DEFAULT
+	HYBRID_SIGNATURE_MODE_NATIVE      HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_NATIVE
+	HYBRID_SIGNATURE_MODE_ALTERNATIVE HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_ALTERNATIVE
+	HYBRID_SIGNATURE_MODE_BOTH        HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_BOTH
+)
+
+type ASLKeyExchangeMethod int
+
+const (
+	ASL_KEX_DEFAULT                     ASLKeyExchangeMethod = C.ASL_KEX_DEFAULT
+	ASL_KEX_CLASSIC_ECDHE_256           ASLKeyExchangeMethod = C.ASL_KEX_CLASSIC_ECDHE_256
+	ASL_KEX_CLASSIC_ECDHE_384           ASLKeyExchangeMethod = C.ASL_KEX_CLASSIC_ECDHE_384
+	ASL_KEX_CLASSIC_ECDHE_521           ASLKeyExchangeMethod = C.ASL_KEX_CLASSIC_ECDHE_521
+	ASL_KEX_PQC_MLKEM_512               ASLKeyExchangeMethod = C.ASL_KEX_PQC_MLKEM_512
+	ASL_KEX_PQC_MLKEM_768               ASLKeyExchangeMethod = C.ASL_KEX_PQC_MLKEM_768
+	ASL_KEX_PQC_MLKEM_1024              ASLKeyExchangeMethod = C.ASL_KEX_PQC_MLKEM_1024
+	ASL_KEX_HYBRID_ECDHE_256_MLKEM_512  ASLKeyExchangeMethod = C.ASL_KEX_HYBRID_ECDHE_256_MLKEM_512
+	ASL_KEX_HYBRID_ECDHE_384_MLKEM_768  ASLKeyExchangeMethod = C.ASL_KEX_HYBRID_ECDHE_384_MLKEM_768
+	ASL_KEX_HYBRID_ECDHE_521_MLKEM_1024 ASLKeyExchangeMethod = C.ASL_KEX_HYBRID_ECDHE_521_MLKEM_1024
 )
 
 type DeviceCertificateChain struct {
@@ -76,8 +92,7 @@ type CustomLogCallback C.asl_custom_log_callback
 type EndpointConfig struct {
 	MutualAuthentication        bool
 	NoEncryption                bool
-	UseSecureElement            bool
-	SecureElementImportKeys     bool
+	ASLKeyExchangeMethod        ASLKeyExchangeMethod
 	SecureElementMiddlewarePath string
 	HybridSignatureMode         HybridSignatureMode
 	DeviceCertificateChain      DeviceCertificateChain
@@ -90,8 +105,7 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	config := C.asl_endpoint_configuration{
 		mutual_authentication:          C.bool(ec.MutualAuthentication),
 		no_encryption:                  C.bool(ec.NoEncryption),
-		use_secure_element:             C.bool(ec.UseSecureElement),
-		secure_element_import_keys:     C.bool(ec.SecureElementImportKeys),
+		key_exchange_method:            C.enum_asl_key_exchange_method(ec.ASLKeyExchangeMethod),
 		secure_element_middleware_path: C.CString(ec.SecureElementMiddlewarePath),
 		hybrid_signature_mode:          C.enum_asl_hybrid_signature_mode(ec.HybridSignatureMode),
 		keylog_file:                    C.CString(ec.KeylogFile),
