@@ -38,14 +38,13 @@ func main() {
 
 	// Create and configure the endpoint configuration
 	endpointConfig := &asl.EndpointConfig{
-		MutualAuthentication:    true,
-		NoEncryption:            false,
-		UseSecureElement:        false,
-		SecureElementImportKeys: false,
-		HybridSignatureMode:     asl.HYBRID_SIGNATURE_MODE_BOTH,
-		DeviceCertificateChain:  asl.DeviceCertificateChain{Path: CERT_FILE},
+		MutualAuthentication:   true,
+		NoEncryption:           true,
+		ASLKeyExchangeMethod:   asl.KEX_CLASSIC_ECDHE_521,
+		HybridSignatureMode:    asl.HYBRID_SIGNATURE_MODE_DEFAULT,
+		DeviceCertificateChain: asl.DeviceCertificateChain{Path: CERT_FILE},
 		PrivateKey: asl.PrivateKey{
-      Path: KEY_FILE,
+			Path: KEY_FILE,
 			// only if the keys are in separate files
 			AdditionalKeyBuffer: nil,
 		},
