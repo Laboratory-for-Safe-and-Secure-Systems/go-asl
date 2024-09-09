@@ -1,6 +1,6 @@
 package asl
 
-// #cgo pkg-config: --static kritis3m_asl wolfssl
+// #cgo pkg-config: --static kritis3m_asl wolfssl liboqs
 // #include <asl_config.h>
 // #include <asl.h>
 // #include <stdlib.h>
