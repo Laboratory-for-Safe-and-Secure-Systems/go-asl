@@ -75,6 +75,11 @@ const (
 	KEX_HYBRID_X448_MLKEM_768       ASLKeyExchangeMethod = C.ASL_KEX_HYBRID_X448_MLKEM768
 )
 
+type PKCS11ASL struct {
+	LongTermCryptoModulePath  string
+	EphemeralCryptoModulePath string
+}
+
 type DeviceCertificateChain struct {
 	Path   string
 	buffer []byte
@@ -95,25 +100,33 @@ type PrivateKey struct {
 type CustomLogCallback C.asl_custom_log_callback
 
 type EndpointConfig struct {
-	MutualAuthentication        bool
-	NoEncryption                bool
-	ASLKeyExchangeMethod        ASLKeyExchangeMethod
-	SecureElementMiddlewarePath string
-	HybridSignatureMode         HybridSignatureMode
-	DeviceCertificateChain      DeviceCertificateChain
-	PrivateKey                  PrivateKey
-	RootCertificate             RootCertificate
-	KeylogFile                  string
+	MutualAuthentication   bool
+	NoEncryption           bool
+	ASLKeyExchangeMethod   ASLKeyExchangeMethod
+	PKCS11                 PKCS11ASL
+	HybridSignatureMode    HybridSignatureMode
+	DeviceCertificateChain DeviceCertificateChain
+	PrivateKey             PrivateKey
+	RootCertificate        RootCertificate
+	KeylogFile             string
 }
 
 func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	config := C.asl_endpoint_configuration{
-		mutual_authentication:          C.bool(ec.MutualAuthentication),
-		no_encryption:                  C.bool(ec.NoEncryption),
-		key_exchange_method:            C.enum_asl_key_exchange_method(ec.ASLKeyExchangeMethod),
-		secure_element_middleware_path: C.CString(ec.SecureElementMiddlewarePath),
-		hybrid_signature_mode:          C.enum_asl_hybrid_signature_mode(ec.HybridSignatureMode),
-		keylog_file:                    C.CString(ec.KeylogFile),
+		mutual_authentication: C.bool(ec.MutualAuthentication),
+		no_encryption:         C.bool(ec.NoEncryption),
+		key_exchange_method:   C.enum_asl_key_exchange_method(ec.ASLKeyExchangeMethod),
+		hybrid_signature_mode: C.enum_asl_hybrid_signature_mode(ec.HybridSignatureMode),
+		keylog_file:           C.CString(ec.KeylogFile),
+	}
+
+	// PKCS11
+	if ec.PKCS11.LongTermCryptoModulePath != "" {
+		config.pkcs11.long_term_crypto_module_path = C.CString(ec.PKCS11.LongTermCryptoModulePath)
+	}
+
+	if ec.PKCS11.EphemeralCryptoModulePath != "" {
+		config.pkcs11.ephemeral_crypto_module_path = C.CString(ec.PKCS11.EphemeralCryptoModulePath)
 	}
 
 	// read the device certificate chain from file
