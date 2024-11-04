@@ -76,17 +76,17 @@ const (
 )
 
 type PKCS11ASL struct {
-	LongTermCryptoModule       LongTermCryptoModule
-	EphemeralCryptoModule     EphemeralCryptoModule
+	LongTermCryptoModule  LongTermCryptoModule
+	EphemeralCryptoModule EphemeralCryptoModule
 }
 
 type LongTermCryptoModule struct {
-  Path     string
-  Pin      string
+	Path string
+	Pin  string
 }
 
 type EphemeralCryptoModule struct {
-  Path     string
+	Path string
 }
 
 type DeviceCertificateChain struct {
@@ -106,7 +106,7 @@ type PrivateKey struct {
 	AdditionalKeyBuffer []byte
 }
 
-type CustomLogCallback C.asl_custom_log_callback
+type CustomLogCallback C.asl_log_callback_t
 
 type EndpointConfig struct {
 	MutualAuthentication   bool
@@ -134,9 +134,9 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 		config.pkcs11.long_term_crypto_module.path = C.CString(ec.PKCS11.LongTermCryptoModule.Path)
 	}
 
-  if ec.PKCS11.LongTermCryptoModule.Pin != "" {
-    config.pkcs11.long_term_crypto_module.pin = C.CString(ec.PKCS11.LongTermCryptoModule.Pin)
-  }
+	if ec.PKCS11.LongTermCryptoModule.Pin != "" {
+		config.pkcs11.long_term_crypto_module.pin = C.CString(ec.PKCS11.LongTermCryptoModule.Pin)
+	}
 
 	if ec.PKCS11.EphemeralCryptoModule.Path != "" {
 		config.pkcs11.ephemeral_crypto_module.path = C.CString(ec.PKCS11.EphemeralCryptoModule.Path)
@@ -207,9 +207,9 @@ type ASLConfig struct {
 
 func (lc *ASLConfig) toC() *C.asl_configuration {
 	config := C.asl_configuration{
-		logging_enabled:     C.bool(lc.LoggingEnabled),
-		log_level:           C.int32_t(lc.LogLevel),
-		custom_log_callback: (C.asl_custom_log_callback)(lc.CustomLogCallback),
+		logging_enabled: C.bool(lc.LoggingEnabled),
+		log_level:       C.int32_t(lc.LogLevel),
+		log_callback:    (C.asl_log_callback_t)(lc.CustomLogCallback),
 	}
 
 	return &config
