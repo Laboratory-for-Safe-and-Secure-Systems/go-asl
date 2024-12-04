@@ -1,6 +1,6 @@
 package asl
 
-// #cgo pkg-config: --static kritis3m_asl wolfssl liboqs
+// #cgo pkg-config: --static kritis3m_asl wolfssl
 // #include <asl_config.h>
 // #include <asl.h>
 // #include <stdlib.h>
@@ -16,6 +16,9 @@ type WOLFSSL_CTX C.struct_WOLFSSL_CTX
 type WOLFSSL C.struct_WOLFSSL
 type ASLEndpoint C.asl_endpoint
 type ASLSession C.asl_session
+
+// ASL Version
+const ASL_VERSION = C.VERSION_MAJOR
 
 // PQ OIDs
 const (
@@ -234,6 +237,7 @@ func ASLErrorMessage(err int) string {
 }
 
 func ASLinit(config *ASLConfig) error {
+  fmt.Println("ASL Version: ", ASL_VERSION)
 	ret := int(C.asl_init(config.toC()))
 	if ret != ASL_SUCCESS {
 		return fmt.Errorf("Failed to initialize ASL: %s", ASLErrorMessage(ret))
