@@ -76,17 +76,8 @@ const (
 )
 
 type PKCS11ASL struct {
-	LongTermCryptoModule  LongTermCryptoModule
-	EphemeralCryptoModule EphemeralCryptoModule
-}
-
-type LongTermCryptoModule struct {
 	Path string
 	Pin  string
-}
-
-type EphemeralCryptoModule struct {
-	Path string
 }
 
 type DeviceCertificateChain struct {
@@ -130,16 +121,12 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	}
 
 	// PKCS11
-	if ec.PKCS11.LongTermCryptoModule.Path != "" {
-		config.pkcs11.long_term_crypto_module.path = C.CString(ec.PKCS11.LongTermCryptoModule.Path)
+	if ec.PKCS11.Path != "" {
+		config.pkcs11.module_path = C.CString(ec.PKCS11.Path)
 	}
 
-	if ec.PKCS11.LongTermCryptoModule.Pin != "" {
-		config.pkcs11.long_term_crypto_module.pin = C.CString(ec.PKCS11.LongTermCryptoModule.Pin)
-	}
-
-	if ec.PKCS11.EphemeralCryptoModule.Path != "" {
-		config.pkcs11.ephemeral_crypto_module.path = C.CString(ec.PKCS11.EphemeralCryptoModule.Path)
+	if ec.PKCS11.Pin != "" {
+		config.pkcs11.module_pin = C.CString(ec.PKCS11.Pin)
 	}
 
 	// read the device certificate chain from file
