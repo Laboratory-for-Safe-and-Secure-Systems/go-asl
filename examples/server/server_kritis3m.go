@@ -11,23 +11,21 @@ import (
 
 /* Connection configuration constants */
 const (
-	CONN_HOST = "waifu.local"
+	CONN_HOST = "localhost"
 	CONN_PORT = "12345"
 	CONN_TYPE = "tcp"
 )
 
-const clientAuth = true
-
 func main() {
 	/* Server Key and Certificate paths */
-	CERT_FILE := "./certs/server_cert.pem"
-	KEY_FILE := "./certs/server_key.pem"
-	CAFILE := "./certs/takemepls.pem"
+	CERT_FILE := "./certs/chain.pem"
+	KEY_FILE := "./certs/privateKey.pem"
+	CAFILE := "./certs/root.pem"
 
 	// Create and configure the library configuration
 	libConfig := &asl.ASLConfig{
-		LoggingEnabled:       true,
-		LogLevel:             3,
+		LoggingEnabled: true,
+		LogLevel:       3,
 	}
 
 	err := asl.ASLinit(libConfig)
@@ -41,7 +39,6 @@ func main() {
 		MutualAuthentication:   true,
 		NoEncryption:           true,
 		ASLKeyExchangeMethod:   asl.KEX_CLASSIC_ECDHE_521,
-		HybridSignatureMode:    asl.HYBRID_SIGNATURE_MODE_DEFAULT,
 		DeviceCertificateChain: asl.DeviceCertificateChain{Path: CERT_FILE},
 		PrivateKey: asl.PrivateKey{
 			Path: KEY_FILE,
@@ -133,7 +130,7 @@ func handleRequest(conn net.Conn, serverEndpoint *asl.ASLEndpoint) {
 	}
 
 	// Get the peer certificate
-	peerCert, err := asl.WolfSSL_get_peer_certificate(session_)
+	peerCert, err := asl.ASLGetPeerCertificate(ASLSession)
 	if err != nil {
 		fmt.Println("Error getting peer certificate:", err)
 		return

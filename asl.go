@@ -1,6 +1,6 @@
 package asl
 
-// #cgo pkg-config: --static kritis3m_asl wolfssl
+// #cgo pkg-config: --static kritis3m_asl
 // #include <asl_config.h>
 // #include <asl.h>
 // #include <stdlib.h>
@@ -43,16 +43,6 @@ const (
 	ASL_LOG_LEVEL_WRN = C.ASL_LOG_LEVEL_WRN
 	ASL_LOG_LEVEL_INF = C.ASL_LOG_LEVEL_INF
 	ASL_LOG_LEVEL_DBG = C.ASL_LOG_LEVEL_DBG
-)
-
-// Hybrid signature modes
-type HybridSignatureMode int
-
-const (
-	HYBRID_SIGNATURE_MODE_DEFAULT     HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_DEFAULT
-	HYBRID_SIGNATURE_MODE_NATIVE      HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_NATIVE
-	HYBRID_SIGNATURE_MODE_ALTERNATIVE HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_ALTERNATIVE
-	HYBRID_SIGNATURE_MODE_BOTH        HybridSignatureMode = C.ASL_HYBRID_SIGNATURE_MODE_BOTH
 )
 
 type ASLKeyExchangeMethod int
@@ -104,7 +94,6 @@ type EndpointConfig struct {
 	NoEncryption           bool
 	ASLKeyExchangeMethod   ASLKeyExchangeMethod
 	PKCS11                 PKCS11ASL
-	HybridSignatureMode    HybridSignatureMode
 	DeviceCertificateChain DeviceCertificateChain
 	PrivateKey             PrivateKey
 	RootCertificate        RootCertificate
@@ -116,7 +105,6 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 		mutual_authentication: C.bool(ec.MutualAuthentication),
 		no_encryption:         C.bool(ec.NoEncryption),
 		key_exchange_method:   C.enum_asl_key_exchange_method(ec.ASLKeyExchangeMethod),
-		hybrid_signature_mode: C.enum_asl_hybrid_signature_mode(ec.HybridSignatureMode),
 		keylog_file:           C.CString(ec.KeylogFile),
 	}
 
@@ -278,6 +266,24 @@ func HandshakeMetricsFromC(cMetrics *C.asl_handshake_metrics) *HandshakeMetrics 
 	}
 }
 
+func ASLGetPeerCertificate(session *ASLSession) (*x509.Certificate, error) {
+	certBuffer := make([]byte, 16384)
+	certSize := C.size_t(len(certBuffer))
+	ret := C.asl_get_peer_certificate((*C.asl_session)(session), (*C.uint8_t)(&certBuffer[0]), &certSize)
+	if ret != ASL_SUCCESS {
+		return nil, fmt.Errorf("Failed to get peer certificate: %s", ASLErrorMessage(int(ret)))
+	}
+
+	certBuffer = certBuffer[:certSize]
+
+	certX509, err := x509.ParseCertificate(certBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse peer certificate: %s", err)
+	}
+
+	return certX509, nil
+}
+
 func ASLGetHandshakeMetrics(session *ASLSession) *HandshakeMetrics {
 	cMetrics := C.asl_get_handshake_metrics((*C.asl_session)(session))
 	return HandshakeMetricsFromC(&cMetrics)
@@ -301,24 +307,4 @@ func GetWolfSSLSession(session *ASLSession) *WOLFSSL {
 
 func GetWolfSSLContext(context *ASLEndpoint) *WOLFSSL_CTX {
 	return (*WOLFSSL_CTX)(unsafe.Pointer(C.asl_get_wolfssl_context((*C.asl_endpoint)(context))))
-}
-
-func WolfSSL_get_peer_certificate(ssl *WOLFSSL) (*x509.Certificate, error) {
-	peerCert := (C.wolfSSL_get_peer_certificate((*C.struct_WOLFSSL)(ssl)))
-	sz := C.int(0)
-	if peerCert == nil {
-		return nil, fmt.Errorf("Peer certificate is nil")
-	}
-
-	data := C.wolfSSL_X509_get_der(peerCert, &sz)
-	if data == nil {
-		return nil, fmt.Errorf("Failed to get peer certificate")
-	}
-
-	certX509, err := x509.ParseCertificate(C.GoBytes(unsafe.Pointer(data), sz))
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse peer certificate")
-	}
-
-	return certX509, nil
 }
