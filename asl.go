@@ -5,6 +5,7 @@ package asl
 // #include <asl.h>
 // #include <stdlib.h>
 import "C"
+
 import (
 	"crypto/x509"
 	"fmt"
@@ -12,10 +13,12 @@ import (
 	"unsafe"
 )
 
-type WOLFSSL_CTX C.struct_WOLFSSL_CTX
-type WOLFSSL C.struct_WOLFSSL
-type ASLEndpoint C.asl_endpoint
-type ASLSession C.asl_session
+type (
+	WOLFSSL_CTX C.struct_WOLFSSL_CTX
+	WOLFSSL     C.struct_WOLFSSL
+	ASLEndpoint C.asl_endpoint
+	ASLSession  C.asl_session
+)
 
 // PQ OIDs
 const (
