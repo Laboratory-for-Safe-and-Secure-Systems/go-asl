@@ -303,11 +303,3 @@ func ASLFreeSession(session *ASLSession) {
 func ASLFreeEndpoint(endpoint *ASLEndpoint) {
 	C.asl_free_endpoint((*C.asl_endpoint)(endpoint))
 }
-
-func GetWolfSSLSession(session *ASLSession) *WOLFSSL {
-	return (*WOLFSSL)(unsafe.Pointer(C.asl_get_wolfssl_session((*C.asl_session)(session))))
-}
-
-func GetWolfSSLContext(context *ASLEndpoint) *WOLFSSL_CTX {
-	return (*WOLFSSL_CTX)(unsafe.Pointer(C.asl_get_wolfssl_context((*C.asl_endpoint)(context))))
-}
