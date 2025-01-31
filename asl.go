@@ -73,6 +73,18 @@ type PKCS11ASL struct {
 	Pin  string
 }
 
+type PreSharedKeyClientCallback C.asl_psk_client_callback_t
+type PreSharedKeyServerCallback C.asl_psk_server_callback_t
+
+type PreSharedKey struct {
+	MasterKey            string
+	Enable               bool
+	UseExternalCallbacks bool
+	CallbackContext      unsafe.Pointer
+	ClientCallback       PreSharedKeyClientCallback
+	ServerCallback       PreSharedKeyServerCallback
+}
+
 type DeviceCertificateChain struct {
 	Path   string
 	buffer []byte
@@ -97,6 +109,7 @@ type EndpointConfig struct {
 	NoEncryption           bool
 	ASLKeyExchangeMethod   ASLKeyExchangeMethod
 	PKCS11                 PKCS11ASL
+	PreSharedKey           PreSharedKey
 	DeviceCertificateChain DeviceCertificateChain
 	PrivateKey             PrivateKey
 	RootCertificate        RootCertificate
@@ -118,6 +131,17 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 
 	if ec.PKCS11.Pin != "" {
 		config.pkcs11.module_pin = C.CString(ec.PKCS11.Pin)
+	}
+
+	// PreSharedKey
+	config.psk.enable_psk = C.bool(ec.PreSharedKey.Enable)
+	config.psk.use_external_callbacks = C.bool(ec.PreSharedKey.UseExternalCallbacks)
+	config.psk.callback_ctx = ec.PreSharedKey.CallbackContext
+	config.psk.psk_client_cb = (C.asl_psk_client_callback_t)(ec.PreSharedKey.ClientCallback)
+	config.psk.psk_server_cb = (C.asl_psk_server_callback_t)(ec.PreSharedKey.ServerCallback)
+
+	if ec.PreSharedKey.MasterKey != "" {
+		config.psk.master_key = C.CString(ec.PreSharedKey.MasterKey)
 	}
 
 	// read the device certificate chain from file

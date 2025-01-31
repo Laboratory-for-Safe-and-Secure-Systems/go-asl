@@ -36,9 +36,12 @@ func main() {
 
 	// Create and configure the endpoint configuration
 	endpointConfig := &asl.EndpointConfig{
-		MutualAuthentication:   true,
-		NoEncryption:           true,
-		ASLKeyExchangeMethod:   asl.KEX_CLASSIC_ECDHE_521,
+		MutualAuthentication: true,
+		NoEncryption:         true,
+		ASLKeyExchangeMethod: asl.KEX_CLASSIC_ECDHE_521,
+		PreSharedKey: asl.PreSharedKey{
+			Enable: false,
+		},
 		DeviceCertificateChain: asl.DeviceCertificateChain{Path: CERT_FILE},
 		PrivateKey: asl.PrivateKey{
 			Path: KEY_FILE,
@@ -53,12 +56,6 @@ func main() {
 	serverEndpoint := asl.ASLsetupServerEndpoint(endpointConfig)
 	if serverEndpoint == nil {
 		fmt.Println("Error setting up server endpoint")
-		os.Exit(1)
-	}
-
-	ctx_ := asl.GetWolfSSLContext(serverEndpoint)
-	if ctx_ == nil {
-		fmt.Println("Error getting wolfSSL context")
 		os.Exit(1)
 	}
 
@@ -114,12 +111,6 @@ func handleRequest(conn net.Conn, serverEndpoint *asl.ASLEndpoint) {
 	ASLSession := asl.ASLCreateSession(serverEndpoint, fd)
 	if ASLSession == nil {
 		fmt.Println("Error creating session")
-		return
-	}
-
-	session_ := asl.GetWolfSSLSession(ASLSession)
-	if session_ == nil {
-		fmt.Println("Error getting wolfSSL session")
 		return
 	}
 
