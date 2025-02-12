@@ -1,4 +1,4 @@
-package lib
+package listener
 
 import (
 	"bufio"
@@ -42,8 +42,7 @@ func (t *ASLTransport) DialContext(ctx context.Context, network, addr string) (n
 	}
 
 	aslConn := &ASLConn{
-		tcpConn:    rawConn,
-		file:       file,
+		TCPConn:    rawConn,
 		aslSession: aslSession,
 	}
 
@@ -132,4 +131,54 @@ func (c *customReadCloser) Close() error {
 		return err
 	}
 	return connErr
+}
+
+func Dial(network, addr string, endpoint *asl.ASLEndpoint) (net.Conn, error) {
+	// Dial the TCP connection.
+	tcpConn, err := net.Dial(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Assert that the connection is a *net.TCPConn.
+	rawConn, ok := tcpConn.(*net.TCPConn)
+	if !ok {
+		tcpConn.Close()
+		return nil, fmt.Errorf("failed to cast connection to *net.TCPConn")
+	}
+
+	// Retrieve the underlying file descriptor.
+	file, err := rawConn.File()
+	if err != nil {
+		rawConn.Close()
+		return nil, fmt.Errorf("failed to get file descriptor: %v", err)
+	}
+	fd := int(file.Fd())
+
+	// Create an ASL session using the file descriptor.
+	aslSession := asl.ASLCreateSession(endpoint, fd)
+	if aslSession == nil {
+		rawConn.Close()
+		return nil, fmt.Errorf("failed to create ASL session")
+	}
+
+	// Create a non-nil context for the connection.
+	ctx, cancel := context.WithCancel(context.Background())
+	fmt.Println("dialed")
+
+	// Wrap the TCP connection in an ASLConn, ensuring the context is set.
+	aslConn := &ASLConn{
+		TCPConn:    rawConn,
+		aslSession: aslSession,
+		ctx:        ctx,
+		cancel:     cancel,
+	}
+
+	// Perform the ASL handshake.
+	if err := asl.ASLHandshake(aslConn.aslSession); err != nil {
+		rawConn.Close()
+		return nil, fmt.Errorf("ASL handshake failed: %v", err)
+	}
+
+	return aslConn, nil
 }
