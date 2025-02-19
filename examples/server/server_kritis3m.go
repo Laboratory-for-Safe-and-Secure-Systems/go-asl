@@ -48,8 +48,8 @@ func main() {
 			// only if the keys are in separate files
 			AdditionalKeyBuffer: nil,
 		},
-		RootCertificate: asl.RootCertificate{Path: CAFILE},
-		KeylogFile:      "/tmp/keylog.txt",
+		RootCertificates: asl.RootCertificates{Paths: []string{CAFILE, CAFILE}},
+		KeylogFile:       "/tmp/keylog.txt",
 	}
 
 	// Use the cEndpointConfig in C functions...

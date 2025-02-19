@@ -93,8 +93,8 @@ type DeviceCertificateChain struct {
 	buffer []byte
 }
 
-type RootCertificate struct {
-	Path   string
+type RootCertificates struct {
+	Paths  []string
 	buffer []byte
 }
 
@@ -116,7 +116,7 @@ type EndpointConfig struct {
 	PreSharedKey           PreSharedKey
 	DeviceCertificateChain DeviceCertificateChain
 	PrivateKey             PrivateKey
-	RootCertificate        RootCertificate
+	RootCertificates       RootCertificates
 	KeylogFile             string
 }
 
@@ -186,12 +186,21 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	}
 
 	// read the root certificate from file
-	if ec.RootCertificate.Path != "" {
-		rootCert, err := os.ReadFile(ec.RootCertificate.Path)
+	if len(ec.RootCertificates.Paths) > 0 {
+		// Read the first root certificate
+		rootCert, err := os.ReadFile(ec.RootCertificates.Paths[0])
 		if err != nil {
 			panic(err)
 		}
-		ec.RootCertificate.buffer = rootCert
+		for i := 1; i < len(ec.RootCertificates.Paths); i++ {
+			// Read the next root certificate
+			nextRootCert, err := os.ReadFile(ec.RootCertificates.Paths[i])
+			if err != nil {
+				panic(err)
+			}
+			rootCert = append(rootCert, nextRootCert...)
+		}
+		ec.RootCertificates.buffer = rootCert
 	}
 
 	// Allocate and set the device certificate chain
@@ -207,8 +216,8 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	}
 
 	// Allocate and set the root certificate
-	config.root_certificate.buffer = (*C.uint8_t)(C.CBytes(ec.RootCertificate.buffer))
-	config.root_certificate.size = C.size_t(len(ec.RootCertificate.buffer))
+	config.root_certificate.buffer = (*C.uint8_t)(C.CBytes(ec.RootCertificates.buffer))
+	config.root_certificate.size = C.size_t(len(ec.RootCertificates.buffer))
 
 	return &config
 }
