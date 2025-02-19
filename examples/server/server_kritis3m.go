@@ -37,8 +37,8 @@ func main() {
 	// Create and configure the endpoint configuration
 	endpointConfig := &asl.EndpointConfig{
 		MutualAuthentication: true,
-		NoEncryption:         true,
 		ASLKeyExchangeMethod: asl.KEX_CLASSIC_ECDHE_521,
+		Ciphersuites:         []string{"TLS13-AES256-GCM-SHA384", "TLS13-CHACHA20-POLY1305-SHA256", "TLS13-SHA384-SHA384"},
 		PreSharedKey: asl.PreSharedKey{
 			Enable: false,
 		},

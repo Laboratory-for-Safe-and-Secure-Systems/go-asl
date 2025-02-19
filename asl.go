@@ -29,15 +29,17 @@ const (
 
 // Error codes
 const (
-	ASL_SUCCESS           = C.ASL_SUCCESS
-	ASL_MEMORY_ERROR      = C.ASL_MEMORY_ERROR
-	ASL_ARGUMENT_ERROR    = C.ASL_ARGUMENT_ERROR
-	ASL_INTERNAL_ERROR    = C.ASL_INTERNAL_ERROR
-	ASL_CERTIFICATE_ERROR = C.ASL_CERTIFICATE_ERROR
-	ASL_PKCS11_ERROR      = C.ASL_PKCS11_ERROR
-	ASL_CONN_CLOSED       = C.ASL_CONN_CLOSED
-	ASL_WANT_READ         = C.ASL_WANT_READ
-	ASL_WANT_WRITE        = C.ASL_WANT_WRITE
+	ASL_SUCCESS             = C.ASL_SUCCESS
+	ASL_MEMORY_ERROR        = C.ASL_MEMORY_ERROR
+	ASL_ARGUMENT_ERROR      = C.ASL_ARGUMENT_ERROR
+	ASL_INTERNAL_ERROR      = C.ASL_INTERNAL_ERROR
+	ASL_CERTIFICATE_ERROR   = C.ASL_CERTIFICATE_ERROR
+	ASL_PKCS11_ERROR        = C.ASL_PKCS11_ERROR
+	ASL_CONN_CLOSED         = C.ASL_CONN_CLOSED
+	ASL_WANT_READ           = C.ASL_WANT_READ
+	ASL_WANT_WRITE          = C.ASL_WANT_WRITE
+	ASL_PSK_ERROR           = C.ASL_PSK_ERROR
+	ASL_NO_PEER_CERTIFICATE = C.ASL_NO_PEER_CERTIFICATE
 )
 
 // Logging levels
@@ -100,6 +102,7 @@ type PrivateKey struct {
 	Path   string
 	buffer []byte
 	// only if the keys are in separate files
+	AdditionalKeyPath   string
 	AdditionalKeyBuffer []byte
 }
 
@@ -107,8 +110,8 @@ type CustomLogCallback C.asl_log_callback_t
 
 type EndpointConfig struct {
 	MutualAuthentication   bool
-	NoEncryption           bool
 	ASLKeyExchangeMethod   ASLKeyExchangeMethod
+	Ciphersuites           []string
 	PKCS11                 PKCS11ASL
 	PreSharedKey           PreSharedKey
 	DeviceCertificateChain DeviceCertificateChain
@@ -120,9 +123,20 @@ type EndpointConfig struct {
 func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	config := C.asl_endpoint_configuration{
 		mutual_authentication: C.bool(ec.MutualAuthentication),
-		no_encryption:         C.bool(ec.NoEncryption),
 		key_exchange_method:   C.enum_asl_key_exchange_method(ec.ASLKeyExchangeMethod),
 		keylog_file:           C.CString(ec.KeylogFile),
+	}
+
+	// Ciphersuites
+	if len(ec.Ciphersuites) > 0 {
+		suites := ec.Ciphersuites[0]
+		// Concatenate the strings into a single string, separated by a colon
+		for i := 1; i < len(ec.Ciphersuites); i++ {
+			suites += ":" + ec.Ciphersuites[i]
+		}
+		config.ciphersuites = C.CString(suites)
+	} else {
+		config.ciphersuites = nil
 	}
 
 	// PKCS11
@@ -163,6 +177,13 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 		}
 		ec.PrivateKey.buffer = privateKey
 	}
+	if ec.PrivateKey.AdditionalKeyPath != "" {
+		additionalKey, err := os.ReadFile(ec.PrivateKey.AdditionalKeyPath)
+		if err != nil {
+			panic(err)
+		}
+		ec.PrivateKey.AdditionalKeyBuffer = additionalKey
+	}
 
 	// read the root certificate from file
 	if ec.RootCertificate.Path != "" {
@@ -180,10 +201,7 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	// Allocate and set the private key
 	config.private_key.buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.buffer))
 	config.private_key.size = C.size_t(len(ec.PrivateKey.buffer))
-	if ec.PrivateKey.AdditionalKeyBuffer == nil {
-		// NULL
-		ec.PrivateKey.AdditionalKeyBuffer = []byte{}
-	} else {
+	if ec.PrivateKey.AdditionalKeyBuffer != nil {
 		config.private_key.additional_key_buffer = (*C.uint8_t)(C.CBytes(ec.PrivateKey.AdditionalKeyBuffer))
 		config.private_key.additional_key_size = C.size_t(len(ec.PrivateKey.AdditionalKeyBuffer))
 	}
@@ -201,6 +219,9 @@ func (ec *EndpointConfig) Free() {
 	C.free(unsafe.Pointer(ec.toC().private_key.additional_key_buffer))
 	C.free(unsafe.Pointer(ec.toC().root_certificate.buffer))
 	C.free(unsafe.Pointer(ec.toC().keylog_file))
+	if (ec.Ciphersuites) != nil {
+		C.free(unsafe.Pointer(ec.toC().ciphersuites))
+	}
 }
 
 type ASLConfig struct {
@@ -240,7 +261,7 @@ func ASLErrorMessage(err int) string {
 func ASLinit(config *ASLConfig) error {
 	ret := int(C.asl_init(config.toC()))
 	if ret != ASL_SUCCESS {
-		return fmt.Errorf("Failed to initialize ASL: %s", ASLErrorMessage(ret))
+		return fmt.Errorf("failed to initialize ASL: %s", ASLErrorMessage(ret))
 	}
 	return nil
 }
@@ -260,7 +281,7 @@ func ASLCreateSession(endpoint *ASLEndpoint, fileDescriptor int) *ASLSession {
 func ASLHandshake(session *ASLSession) error {
 	ret := int(C.asl_handshake((*C.asl_session)(session)))
 	if ret != ASL_SUCCESS {
-		return fmt.Errorf("Failed to handshake: %s", ASLErrorMessage(ret))
+		return fmt.Errorf("failed to handshake: %s", ASLErrorMessage(ret))
 	}
 	return nil
 }
@@ -271,7 +292,7 @@ func ASLReceive(session *ASLSession, buffer []byte) (int, error) {
 		// This is not an error, just a signal that we need to read more data
 		return 0, nil
 	} else if ret < 0 {
-		return 0, fmt.Errorf("Failed to receive: %s", ASLErrorMessage(ret))
+		return 0, fmt.Errorf("failed to receive: %s", ASLErrorMessage(ret))
 	}
 	return ret, nil
 }
@@ -282,7 +303,7 @@ func ASLSend(session *ASLSession, buffer []byte) error {
 		// This is not an error, just a signal that we need to write more data
 		return nil
 	} else if ret != ASL_SUCCESS {
-		return fmt.Errorf("Failed to send: %s", ASLErrorMessage(ret))
+		return fmt.Errorf("failed to send: %s", ASLErrorMessage(ret))
 	}
 	return nil
 }
@@ -300,14 +321,14 @@ func ASLGetPeerCertificate(session *ASLSession) (*x509.Certificate, error) {
 	certSize := C.size_t(len(certBuffer))
 	ret := C.asl_get_peer_certificate((*C.asl_session)(session), (*C.uint8_t)(&certBuffer[0]), &certSize)
 	if ret != ASL_SUCCESS {
-		return nil, fmt.Errorf("Failed to get peer certificate: %s", ASLErrorMessage(int(ret)))
+		return nil, fmt.Errorf("failed to get peer certificate: %s", ASLErrorMessage(int(ret)))
 	}
 
 	certBuffer = certBuffer[:certSize]
 
 	certX509, err := x509.ParseCertificate(certBuffer)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse peer certificate: %s", err)
+		return nil, fmt.Errorf("failed to parse peer certificate: %s", err)
 	}
 
 	return certX509, nil
