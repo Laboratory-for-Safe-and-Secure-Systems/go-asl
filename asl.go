@@ -20,13 +20,6 @@ type (
 	ASLSession  C.asl_session
 )
 
-// PQ OIDs
-const (
-	SubjectAltPublicKeyInfoExtension = "2.5.29.72"
-	AltSignatureAlgorithmExtension   = "2.5.29.73"
-	AltSignatureValueExtension       = "2.5.29.74"
-)
-
 // Error codes
 const (
 	ASL_SUCCESS             = C.ASL_SUCCESS
@@ -222,15 +215,13 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	return &config
 }
 
-func (ec *EndpointConfig) Free() {
-	C.free(unsafe.Pointer(ec.toC().device_certificate_chain.buffer))
-	C.free(unsafe.Pointer(ec.toC().private_key.buffer))
-	C.free(unsafe.Pointer(ec.toC().private_key.additional_key_buffer))
-	C.free(unsafe.Pointer(ec.toC().root_certificate.buffer))
-	C.free(unsafe.Pointer(ec.toC().keylog_file))
-	if (ec.Ciphersuites) != nil {
-		C.free(unsafe.Pointer(ec.toC().ciphersuites))
-	}
+func FreeEndpointConfiguration(cfg *C.asl_endpoint_configuration) {
+	C.free(unsafe.Pointer(cfg.device_certificate_chain.buffer))
+	C.free(unsafe.Pointer(cfg.private_key.buffer))
+	C.free(unsafe.Pointer(cfg.private_key.additional_key_buffer))
+	C.free(unsafe.Pointer(cfg.root_certificate.buffer))
+	C.free(unsafe.Pointer(cfg.ciphersuites))
+	C.free(unsafe.Pointer(cfg.keylog_file))
 }
 
 type ASLConfig struct {
@@ -276,11 +267,15 @@ func ASLinit(config *ASLConfig) error {
 }
 
 func ASLsetupServerEndpoint(config *EndpointConfig) *ASLEndpoint {
-	return (*ASLEndpoint)(C.asl_setup_server_endpoint(config.toC()))
+	cfg := config.toC()
+	defer FreeEndpointConfiguration(cfg)
+	return (*ASLEndpoint)(C.asl_setup_server_endpoint(cfg))
 }
 
 func ASLsetupClientEndpoint(config *EndpointConfig) *ASLEndpoint {
-	return (*ASLEndpoint)(C.asl_setup_client_endpoint(config.toC()))
+	cfg := config.toC()
+	defer FreeEndpointConfiguration(cfg)
+	return (*ASLEndpoint)(C.asl_setup_client_endpoint(cfg))
 }
 
 func ASLCreateSession(endpoint *ASLEndpoint, fileDescriptor int) *ASLSession {
@@ -358,4 +353,8 @@ func ASLFreeSession(session *ASLSession) {
 
 func ASLFreeEndpoint(endpoint *ASLEndpoint) {
 	C.asl_free_endpoint((*C.asl_endpoint)(endpoint))
+}
+
+func ASLshutdown() {
+	C.asl_cleanup()
 }

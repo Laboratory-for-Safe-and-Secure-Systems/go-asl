@@ -92,6 +92,7 @@ func main() {
 	fmt.Println("Received signal:", got)
 
 	asl.ASLFreeEndpoint(serverEndpoint)
+	asl.ASLshutdown()
 }
 
 /* Handles incoming requests */
@@ -114,6 +115,8 @@ func handleRequest(conn net.Conn, serverEndpoint *asl.ASLEndpoint) {
 		return
 	}
 
+	defer asl.ASLFreeSession(ASLSession)
+
 	err = asl.ASLHandshake(ASLSession)
 	if err != nil {
 		fmt.Println("Error handshaking:", err)
@@ -131,10 +134,6 @@ func handleRequest(conn net.Conn, serverEndpoint *asl.ASLEndpoint) {
 	for _, ext := range peerCert.UnhandledCriticalExtensions {
 		fmt.Println(ext)
 	}
-
-	// #define SubjectAltPublicKeyInfoExtension "2.5.29.72"
-	// #define AltSignatureAlgorithmExtension "2.5.29.73"
-	// #define AltSignatureValueExtension "2.5.29.74"
 
 	// print all the non-critical extensions
 	for _, ext := range peerCert.Extensions {
@@ -162,5 +161,4 @@ func handleRequest(conn net.Conn, serverEndpoint *asl.ASLEndpoint) {
 	}
 
 	asl.ASLCloseSession(ASLSession)
-	asl.ASLFreeSession(ASLSession)
 }
