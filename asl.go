@@ -179,19 +179,22 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	}
 
 	// read the root certificate from file
-	if len(ec.RootCertificates.Paths) > 0 {
+	if len(ec.RootCertificates.Paths) > 0 && ec.RootCertificates.Paths[0] != "" {
 		// Read the first root certificate
 		rootCert, err := os.ReadFile(ec.RootCertificates.Paths[0])
 		if err != nil {
 			panic(err)
 		}
 		for i := 1; i < len(ec.RootCertificates.Paths); i++ {
-			// Read the next root certificate
-			nextRootCert, err := os.ReadFile(ec.RootCertificates.Paths[i])
-			if err != nil {
-				panic(err)
+			if ec.RootCertificates.Paths[i] != "" {
+
+				// Read the next root certificate
+				nextRootCert, err := os.ReadFile(ec.RootCertificates.Paths[i])
+				if err != nil {
+					panic(err)
+				}
+				rootCert = append(rootCert, nextRootCert...)
 			}
-			rootCert = append(rootCert, nextRootCert...)
 		}
 		ec.RootCertificates.buffer = rootCert
 	}
