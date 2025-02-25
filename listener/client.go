@@ -17,6 +17,7 @@ import (
 type ASLTransport struct {
 	Endpoint *asl.ASLEndpoint
 	Dialer   *net.Dialer // Optional custom dialer for timeouts, etc.
+	Logger   logging.Logger
 }
 
 // DialContext creates a custom ASL connection instead of using TLS
@@ -33,22 +34,43 @@ func (t *ASLTransport) DialContext(ctx context.Context, network, addr string) (n
 		return nil, fmt.Errorf("failed to cast to *net.TCPConn")
 	}
 
-	// Set up ASL session using the file descriptor from the TCP connection
-	file, _ := rawConn.File()
-	fd := int(file.Fd())
+	// Get the socket file descriptor using platform-specific code
+	fd, err := getSocketFD(rawConn)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
+	}
 
-	aslSession := asl.ASLCreateSession(t.Endpoint, fd)
+	// Duplicate the socket using platform-specific code
+	dupFD, err := duplicateSocket(fd)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+
+	aslSession := asl.ASLCreateSession(t.Endpoint, dupFD)
 	if aslSession == nil {
+		closeSocket(dupFD)
+		rawConn.Close()
 		return nil, fmt.Errorf("failed to create ASL session")
 	}
 
+	connContext, cancel := context.WithCancel(ctx)
+
 	aslConn := &ASLConn{
-		TCPConn:    rawConn,
-		aslSession: aslSession,
+		TCPConn:     rawConn,
+		aslSession:  aslSession,
+		ctx:         connContext,
+		cancel:      cancel,
+		ASLListener: nil,
+		logger:      t.Logger,
+		TLSState:    nil,
 	}
 
 	err = asl.ASLHandshake(aslConn.aslSession)
 	if err != nil {
+		closeSocket(dupFD)
+		rawConn.Close()
 		return nil, fmt.Errorf("ASL handshake failed: %v", err)
 	}
 
@@ -148,12 +170,24 @@ func Dial(network, addr string, endpoint *asl.ASLEndpoint) (net.Conn, error) {
 		return nil, fmt.Errorf("failed to cast to *net.TCPConn")
 	}
 
-	// Set up ASL session using the file descriptor from the TCP connection
-	file, _ := rawConn.File()
-	fd := int(file.Fd())
+	// Get the socket file descriptor using platform-specific code
+	fd, err := getSocketFD(rawConn)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
+	}
 
-	aslSession := asl.ASLCreateSession(endpoint, fd)
+	// Duplicate the socket using platform-specific code
+	dupFD, err := duplicateSocket(fd)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+
+	aslSession := asl.ASLCreateSession(endpoint, dupFD)
 	if aslSession == nil {
+		closeSocket(dupFD)
+		rawConn.Close()
 		return nil, fmt.Errorf("failed to create ASL session")
 	}
 
@@ -174,7 +208,9 @@ func Dial(network, addr string, endpoint *asl.ASLEndpoint) (net.Conn, error) {
 
 	err = asl.ASLHandshake(aslConn.aslSession)
 	if err != nil {
+		closeSocket(dupFD)
 		cancel() // Clean up context if handshake fails
+		rawConn.Close()
 		return nil, fmt.Errorf("ASL handshake failed: %v", err)
 	}
 
