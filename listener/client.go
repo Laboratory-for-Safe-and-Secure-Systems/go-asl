@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Laboratory-for-Safe-and-Secure-Systems/go-asl"
+	"github.com/Laboratory-for-Safe-and-Secure-Systems/go-asl/logging"
 )
 
 // ASLTransport is a custom RoundTripper that uses ASL for TLS communication
@@ -134,51 +135,51 @@ func (c *customReadCloser) Close() error {
 }
 
 func Dial(network, addr string, endpoint *asl.ASLEndpoint) (net.Conn, error) {
-	// Dial the TCP connection.
-	tcpConn, err := net.Dial(network, addr)
+	// Dial the TCP connection
+	dialer := &net.Dialer{Timeout: 30 * time.Second}
+	tcpConn, err := dialer.Dial(network, addr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Assert that the connection is a *net.TCPConn.
+	// Cast to TCPConn
 	rawConn, ok := tcpConn.(*net.TCPConn)
 	if !ok {
-		tcpConn.Close()
-		return nil, fmt.Errorf("failed to cast connection to *net.TCPConn")
+		return nil, fmt.Errorf("failed to cast to *net.TCPConn")
 	}
 
-	// Retrieve the underlying file descriptor.
-	file, err := rawConn.File()
-	if err != nil {
-		rawConn.Close()
-		return nil, fmt.Errorf("failed to get file descriptor: %v", err)
-	}
+	// Set up ASL session using the file descriptor from the TCP connection
+	file, _ := rawConn.File()
 	fd := int(file.Fd())
 
-	// Create an ASL session using the file descriptor.
 	aslSession := asl.ASLCreateSession(endpoint, fd)
 	if aslSession == nil {
-		rawConn.Close()
 		return nil, fmt.Errorf("failed to create ASL session")
 	}
 
-	// Create a non-nil context for the connection.
+	// Create context and logger
 	ctx, cancel := context.WithCancel(context.Background())
+	logger := &logging.DefaultLogger{DebugEnabled: false}
 	fmt.Println("dialed")
 
 	// Wrap the TCP connection in an ASLConn, ensuring the context is set.
 	aslConn := &ASLConn{
-		TCPConn:    rawConn,
-		aslSession: aslSession,
-		ctx:        ctx,
-		cancel:     cancel,
+		aslSession:  aslSession,
+		ctx:         ctx,
+		cancel:      cancel,
+		TCPConn:     rawConn,
+		ASLListener: nil, // Client connections don't have a listener
+		logger:      logger,
 	}
 
-	// Perform the ASL handshake.
-	if err := asl.ASLHandshake(aslConn.aslSession); err != nil {
-		rawConn.Close()
+	err = asl.ASLHandshake(aslConn.aslSession)
+	if err != nil {
+		cancel() // Clean up context if handshake fails
 		return nil, fmt.Errorf("ASL handshake failed: %v", err)
 	}
+
+	// Simulate TLS state after successful handshake
+	aslConn.simulateTLSState()
 
 	return aslConn, nil
 }

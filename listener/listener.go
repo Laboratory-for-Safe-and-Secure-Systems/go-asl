@@ -13,7 +13,6 @@ import (
 
 	asl "github.com/Laboratory-for-Safe-and-Secure-Systems/go-asl"
 	"github.com/Laboratory-for-Safe-and-Secure-Systems/go-asl/logging"
-	"golang.org/x/sys/unix"
 )
 
 // ASLConn is our custom connection that implements net.Conn and wraps ASL functionality.
@@ -100,14 +99,7 @@ func (c *ASLConn) Close() error {
 
 		// Force the underlying TCP socket to abort blocking reads.
 		c.TCPConn.SetDeadline(time.Now())
-		if rawConn, errRaw := c.TCPConn.SyscallConn(); errRaw == nil {
-			rawConn.Control(func(fd uintptr) {
-				// Shutdown the read side to force any blocked read to return.
-				unix.Shutdown(int(fd), unix.SHUT_RD)
-			})
-		} else {
-			c.logger.Errorf("Failed to get raw connection for shutdown: %v", errRaw)
-		}
+		shutdownSocket(c.TCPConn)
 
 		// Cancel the context to signal any pending Read operations.
 		c.cancel()
@@ -190,13 +182,14 @@ type ASLListener struct {
 	Endpoint    *asl.ASLEndpoint
 	Logger      logging.Logger
 	activeConns sync.Map // key: *ASLConn, value: struct{}
+	Debug       bool
 
 	net.Listener // Embedded underlying listener.
 }
 
 func (l *ASLListener) Accept() (net.Conn, error) {
 	if l.Logger == nil {
-		l.Logger = &logging.DefaultLogger{DebugEnabled: false}
+		l.Logger = &logging.DefaultLogger{DebugEnabled: l.Debug}
 	} else {
 		l.Logger = logging.NewLogger(l.Logger)
 	}
@@ -210,39 +203,24 @@ func (l *ASLListener) Accept() (net.Conn, error) {
 		return nil, fmt.Errorf("failed to cast connection to *net.TCPConn")
 	}
 
-	// Use SyscallConn to get the underlying FD without duplicating it.
-	rawConn, err := tcpConn.SyscallConn()
+	// Get the socket file descriptor using platform-specific code
+	fd, err := getSocketFD(tcpConn)
 	if err != nil {
 		tcpConn.Close()
-		return nil, fmt.Errorf("failed to get syscall.RawConn: %v", err)
-	}
-	var fd int
-	controlErr := rawConn.Control(func(s uintptr) {
-		fd = int(s)
-	})
-	if controlErr != nil {
-		tcpConn.Close()
-		return nil, fmt.Errorf("failed to get fd: %v", controlErr)
+		return nil, err
 	}
 
-	// Duplicate the FD so we can modify its flags without affecting Go's TCPConn.
-	dupFD, err := unix.Dup(fd)
+	// Duplicate the socket using platform-specific code
+	dupFD, err := duplicateSocket(fd)
 	if err != nil {
 		tcpConn.Close()
-		return nil, fmt.Errorf("failed to duplicate fd: %v", err)
-	}
-
-	// Set the duplicate FD to blocking mode.
-	if err := unix.SetNonblock(dupFD, false); err != nil {
-		unix.Close(dupFD)
-		tcpConn.Close()
-		return nil, fmt.Errorf("failed to set dupFD to blocking mode: %v", err)
+		return nil, err
 	}
 
 	l.Logger.Debugf("Accepting connection from %v using dupFD: %d", tcpConn.RemoteAddr(), dupFD)
 	session := asl.ASLCreateSession(l.Endpoint, dupFD)
 	if session == nil {
-		unix.Close(dupFD)
+		closeSocket(dupFD)
 		tcpConn.Close()
 		return nil, fmt.Errorf("failed to create ASL session")
 	}
