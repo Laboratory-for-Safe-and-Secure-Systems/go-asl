@@ -72,7 +72,8 @@ type PreSharedKeyClientCallback C.asl_psk_client_callback_t
 type PreSharedKeyServerCallback C.asl_psk_server_callback_t
 
 type PreSharedKey struct {
-	MasterKey            string
+	Key                  string
+	Identity             string
 	Enable               bool
 	UseExternalCallbacks bool
 	EnableCertAuth       bool
@@ -144,13 +145,16 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	// PreSharedKey
 	config.psk.enable_psk = C.bool(ec.PreSharedKey.Enable)
 	config.psk.use_external_callbacks = C.bool(ec.PreSharedKey.UseExternalCallbacks)
-	config.psk.enable_certWithExternPsk = C.bool(ec.PreSharedKey.EnableCertAuth)
+	config.psk.enable_cert_auth = C.bool(ec.PreSharedKey.EnableCertAuth)
 	config.psk.callback_ctx = ec.PreSharedKey.CallbackContext
 	config.psk.psk_client_cb = (C.asl_psk_client_callback_t)(ec.PreSharedKey.ClientCallback)
 	config.psk.psk_server_cb = (C.asl_psk_server_callback_t)(ec.PreSharedKey.ServerCallback)
 
-	if ec.PreSharedKey.MasterKey != "" {
-		config.psk.master_key = C.CString(ec.PreSharedKey.MasterKey)
+	if ec.PreSharedKey.Key != "" {
+		config.psk.key = C.CString(ec.PreSharedKey.Key)
+	}
+	if ec.PreSharedKey.Identity != "" {
+		config.psk.identity = C.CString(ec.PreSharedKey.Identity)
 	}
 
 	// read the device certificate chain from file
@@ -219,12 +223,36 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 }
 
 func FreeEndpointConfiguration(cfg *C.asl_endpoint_configuration) {
-	C.free(unsafe.Pointer(cfg.device_certificate_chain.buffer))
-	C.free(unsafe.Pointer(cfg.private_key.buffer))
-	C.free(unsafe.Pointer(cfg.private_key.additional_key_buffer))
-	C.free(unsafe.Pointer(cfg.root_certificate.buffer))
-	C.free(unsafe.Pointer(cfg.ciphersuites))
-	C.free(unsafe.Pointer(cfg.keylog_file))
+	if cfg.device_certificate_chain.buffer != nil {
+		C.free(unsafe.Pointer(cfg.device_certificate_chain.buffer))
+	}
+	if cfg.private_key.buffer != nil {
+		C.free(unsafe.Pointer(cfg.private_key.buffer))
+	}
+	if cfg.private_key.additional_key_buffer != nil {
+		C.free(unsafe.Pointer(cfg.private_key.additional_key_buffer))
+	}
+	if cfg.root_certificate.buffer != nil {
+		C.free(unsafe.Pointer(cfg.root_certificate.buffer))
+	}
+	if cfg.ciphersuites != nil {
+		C.free(unsafe.Pointer(cfg.ciphersuites))
+	}
+	if cfg.keylog_file != nil {
+		C.free(unsafe.Pointer(cfg.keylog_file))
+	}
+	if cfg.pkcs11.module_path != nil {
+		C.free(unsafe.Pointer(cfg.pkcs11.module_path))
+	}
+	if cfg.pkcs11.module_pin != nil {
+		C.free(unsafe.Pointer(cfg.pkcs11.module_pin))
+	}
+	if cfg.psk.key != nil {
+		C.free(unsafe.Pointer(cfg.psk.key))
+	}
+	if cfg.psk.identity != nil {
+		C.free(unsafe.Pointer(cfg.psk.identity))
+	}
 }
 
 type ASLConfig struct {
