@@ -147,8 +147,8 @@ func (ec *EndpointConfig) toC() *C.asl_endpoint_configuration {
 	config.psk.use_external_callbacks = C.bool(ec.PreSharedKey.UseExternalCallbacks)
 	config.psk.enable_cert_auth = C.bool(ec.PreSharedKey.EnableCertAuth)
 	config.psk.callback_ctx = ec.PreSharedKey.CallbackContext
-	config.psk.psk_client_cb = (C.asl_psk_client_callback_t)(ec.PreSharedKey.ClientCallback)
-	config.psk.psk_server_cb = (C.asl_psk_server_callback_t)(ec.PreSharedKey.ServerCallback)
+	config.psk.client_cb = (C.asl_psk_client_callback_t)(ec.PreSharedKey.ClientCallback)
+	config.psk.server_cb = (C.asl_psk_server_callback_t)(ec.PreSharedKey.ServerCallback)
 
 	if ec.PreSharedKey.Key != "" {
 		config.psk.key = C.CString(ec.PreSharedKey.Key)
